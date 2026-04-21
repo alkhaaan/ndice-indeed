@@ -1,0 +1,86 @@
+﻿:root {
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  color: #12202f;
+  background: #f7fafc;
+}
+
+body {
+  margin: 0;
+  width: 360px;
+  background: linear-gradient(140deg, #eef5fb, #fefefe);
+}
+
+.container {
+  padding: 12px;
+}
+
+h1 {
+  margin: 4px 0 10px;
+  font-size: 18px;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.card {
+  border: 1px solid #d9e3ec;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  margin: 8px 0 4px;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #c6d3df;
+  border-radius: 6px;
+  padding: 7px;
+  font-size: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.buttonRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+button {
+  border: 1px solid #204a72;
+  background: #2f6fa8;
+  color: #fff;
+  border-radius: 6px;
+  padding: 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1f5a8c;
+}
+
+.small {
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+#feedback {
+  min-height: 16px;
+}

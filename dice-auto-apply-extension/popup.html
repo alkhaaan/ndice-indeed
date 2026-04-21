@@ -1,0 +1,69 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dice Auto Apply</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Dice Auto Apply</h1>
+
+    <section class="card">
+      <h2>Schedule (ET)</h2>
+      <p class="small">Runs daily at <strong>9:00 AM</strong>, <strong>1:00 PM</strong>, and <strong>6:00 PM</strong> Eastern Time.</p>
+      <label class="row">
+        <span>Enable scheduler</span>
+        <input id="scheduleEnabled" type="checkbox" />
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Automation</h2>
+      <label>Dice Search URL</label>
+      <input id="searchUrl" type="text" />
+
+      <label>Max jobs per run</label>
+      <input id="maxJobsPerRun" type="number" min="1" max="100" />
+
+      <label>Max form steps per job</label>
+      <input id="maxFormSteps" type="number" min="1" max="30" />
+
+      <label class="row">
+        <span>Dry run (no submit click)</span>
+        <input id="dryRun" type="checkbox" />
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Profile Autofill</h2>
+      <input id="fullName" type="text" placeholder="Full name" />
+      <input id="email" type="email" placeholder="Email" />
+      <input id="phone" type="text" placeholder="Phone" />
+      <input id="city" type="text" placeholder="City" />
+      <input id="linkedin" type="text" placeholder="LinkedIn URL" />
+      <input id="website" type="text" placeholder="Portfolio / Website" />
+      <input id="salaryExpectation" type="text" placeholder="Salary expectation" />
+      <input id="workAuthorization" type="text" placeholder="Work authorization" />
+    </section>
+
+    <section class="card">
+      <h2>Status</h2>
+      <p id="statusText" class="small">Loading status...</p>
+      <div class="buttonRow">
+        <button id="saveBtn">Save</button>
+        <button id="runNowBtn">Run now</button>
+      </div>
+      <div class="buttonRow">
+        <button id="openLogsBtn">Open logs</button>
+        <button id="clearLogsBtn">Clear logs</button>
+      </div>
+    </section>
+
+    <p id="feedback" class="small"></p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
+

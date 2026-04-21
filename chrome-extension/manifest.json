@@ -1,0 +1,31 @@
+﻿{
+  "manifest_version": 3,
+  "name": "Indeed Auto Apply Assistant",
+  "version": "1.0.0",
+  "description": "Automates Indeed application workflows on a fixed ET schedule with detailed run logging.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.indeed.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.indeed.com/*"],
+      "js": ["indeed-content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Indeed Auto Apply",
+    "default_popup": "popup.html"
+  },
+  "options_page": "logs.html"
+}

@@ -1,0 +1,44 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Indeed Automation Logs</title>
+  <link rel="stylesheet" href="logs.css" />
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Indeed Automation Logs</h1>
+      <div class="controls">
+        <select id="levelFilter">
+          <option value="all">All levels</option>
+          <option value="info">Info</option>
+          <option value="warn">Warn</option>
+          <option value="error">Error</option>
+        </select>
+        <button id="refreshBtn">Refresh</button>
+        <button id="exportBtn">Export JSON</button>
+        <button id="clearBtn">Clear</button>
+      </div>
+    </header>
+
+    <section id="summary"></section>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Level</th>
+          <th>Source</th>
+          <th>Message</th>
+          <th>Data</th>
+        </tr>
+      </thead>
+      <tbody id="logTableBody"></tbody>
+    </table>
+  </main>
+
+  <script src="logs.js"></script>
+</body>
+</html>
