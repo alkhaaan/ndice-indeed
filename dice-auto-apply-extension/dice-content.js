@@ -20,45 +20,247 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "dice-probe-apply-outcome") {
+    probeApplyOutcome()
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
+  if (message?.type === "dice-complete-wizard") {
+    completeDiceWizard(message.payload)
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
   return false;
 });
 
 async function collectJobsFromSearch(payload) {
   const maxJobsPerRun = Math.max(1, Number(payload?.maxJobsPerRun || 15));
+  const maxPaginationPages = Math.max(1, Math.min(25, Number(payload?.maxPaginationPages || Math.ceil(maxJobsPerRun / 8) + 2)));
   const history = payload?.history || {};
 
   if (!location.hostname.includes("dice.com")) {
     throw new Error("Job collection must run on dice.com.");
   }
 
-  await wait(1000);
-  const cards = collectJobCards();
-
   const jobs = [];
-  for (const card of cards) {
+  const seenKeys = new Set();
+  const pageUrls = [];
+  let pagesVisited = 0;
+  let pageAdvanceCount = 0;
+  let totalCardsScanned = 0;
+  let stopReason = "exhausted";
+
+  for (let pageIndex = 0; pageIndex < maxPaginationPages; pageIndex += 1) {
+    await wait(900);
+    pagesVisited += 1;
+    pageUrls.push(location.href);
+
+    const cards = collectJobCards();
+    totalCardsScanned += cards.length;
+
+    for (const card of cards) {
+      if (jobs.length >= maxJobsPerRun) {
+        stopReason = "max_jobs_reached";
+        break;
+      }
+
+      const item = extractJobFromCard(card);
+      if (!item) {
+        continue;
+      }
+
+      const dedupeKey = `${item.jobId || ""}|${item.url || ""}`;
+      if (seenKeys.has(dedupeKey)) {
+        continue;
+      }
+      seenKeys.add(dedupeKey);
+
+      if (history[item.jobId]?.status === "submitted") {
+        item.previousStatus = "already_submitted";
+      }
+      if (history[item.jobId]?.status === "already_submitted") {
+        item.previousStatus = "already_submitted";
+      }
+
+      jobs.push(item);
+    }
+
     if (jobs.length >= maxJobsPerRun) {
       break;
     }
 
-    const item = extractJobFromCard(card);
-    if (!item) {
-      continue;
+    if (pageIndex >= maxPaginationPages - 1) {
+      stopReason = "max_pages_reached";
+      break;
     }
 
-    if (history[item.jobId]?.status === "submitted") {
-      item.previousStatus = "already_submitted";
+    const advanced = await goToNextResultsPage();
+    if (!advanced.advanced) {
+      stopReason = advanced.reason || "next_page_unavailable";
+      break;
     }
 
-    jobs.push(item);
+    pageAdvanceCount += 1;
   }
 
   await log("info", "discover", "Collected jobs from search page.", {
-    foundCards: cards.length,
+    foundCards: totalCardsScanned,
     returnedJobs: jobs.length,
+    pagesVisited,
+    pageAdvanceCount,
+    stopReason,
+    pageUrls,
     url: location.href
   });
 
   return { jobs };
+}
+
+async function goToNextResultsPage() {
+  const beforeUrl = location.href;
+  const beforeFingerprint = getResultsFingerprint();
+  const pagination = getResultsPaginationState();
+
+  if (pagination.current && pagination.total && pagination.current >= pagination.total) {
+    return { advanced: false, reason: "last_page_reached" };
+  }
+
+  const nextControl = findNextResultsControl();
+  if (nextControl) {
+    nextControl.click();
+    const changed = await waitForResultsPageChange(beforeUrl, beforeFingerprint, 10000);
+    if (changed) {
+      return { advanced: true, reason: "next_control_clicked" };
+    }
+  }
+
+  const nextUrl = buildNextPageUrl(beforeUrl);
+  if (nextUrl && nextUrl !== beforeUrl) {
+    location.assign(nextUrl);
+    const changed = await waitForResultsPageChange(beforeUrl, beforeFingerprint, 10000);
+    if (changed) {
+      return { advanced: true, reason: "url_page_advanced" };
+    }
+  }
+
+  return { advanced: false, reason: "next_page_not_detected" };
+}
+
+function getResultsPaginationState() {
+  const containers = Array.from(
+    document.querySelectorAll(
+      "nav[aria-label*='pagination' i], [class*='pagination'], [data-testid*='pagination'], [data-cy*='pagination']"
+    )
+  );
+
+  for (const container of containers) {
+    const text = normalizeText(container.textContent || "");
+    const match = text.match(/(\d+)\s*of\s*(\d+)/i);
+    if (!match) {
+      continue;
+    }
+    return {
+      current: Number(match[1]),
+      total: Number(match[2])
+    };
+  }
+
+  const url = new URL(location.href);
+  const page = Number(url.searchParams.get("page") || "1");
+  return {
+    current: Number.isFinite(page) && page > 0 ? page : null,
+    total: null
+  };
+}
+
+function getResultsFingerprint() {
+  const cards = collectJobCards().slice(0, 6);
+  const signatures = cards.map((card) => {
+    const jobId = getJobId(card) || "";
+    const anchor = card.querySelector("a[href*='/job-detail/'], a[href*='jobId='], a");
+    const href = normalizeText(anchor?.getAttribute("href") || anchor?.href || "");
+    const title = getCardTitle(card);
+    return `${jobId}|${href}|${title}`;
+  });
+  return signatures.join("::");
+}
+
+function findNextResultsControl() {
+  const paginationContainers = Array.from(
+    document.querySelectorAll(
+      "nav[aria-label*='pagination' i], [class*='pagination'], [data-testid*='pagination'], [data-cy*='pagination']"
+    )
+  );
+
+  const scopedCandidates = paginationContainers.flatMap((container) =>
+    Array.from(container.querySelectorAll("button, a[role='button'], a, input[type='button']"))
+  );
+  const fallbackCandidates = Array.from(
+    document.querySelectorAll("button[aria-label*='next' i], a[aria-label*='next' i], button[title*='next' i], a[title*='next' i]")
+  );
+  const candidates = [...scopedCandidates, ...fallbackCandidates];
+
+  for (const element of candidates) {
+    if (!isElementVisible(element)) {
+      continue;
+    }
+    if (element.disabled || element.getAttribute("aria-disabled") === "true") {
+      continue;
+    }
+
+    const text = normalizeText(element.textContent || element.value || "").toLowerCase();
+    const aria = normalizeText(element.getAttribute("aria-label") || "").toLowerCase();
+    const title = normalizeText(element.getAttribute("title") || "").toLowerCase();
+    const classes = normalizeText(element.className || "").toLowerCase();
+    const descriptor = `${text} ${aria} ${title} ${classes}`;
+
+    if (!/next|forward|arrow-right|chevron-right|page-right|go to next/.test(descriptor) && ![">", "›", "→"].includes(text)) {
+      continue;
+    }
+    if (/last|first|previous|prev|back|double/.test(descriptor)) {
+      continue;
+    }
+    if (text === ">>" || text === "»") {
+      continue;
+    }
+
+    return element;
+  }
+
+  return null;
+}
+
+async function waitForResultsPageChange(beforeUrl, beforeFingerprint, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await wait(300);
+    const urlChanged = location.href !== beforeUrl;
+    const fingerprint = getResultsFingerprint();
+    const cardsPresent = collectJobCards().length > 0;
+    if (urlChanged && cardsPresent) {
+      return true;
+    }
+    if (fingerprint && beforeFingerprint && fingerprint !== beforeFingerprint) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function buildNextPageUrl(currentUrl) {
+  try {
+    const url = new URL(currentUrl);
+    const currentPage = Number(url.searchParams.get("page") || "1");
+    const nextPage = Number.isFinite(currentPage) && currentPage > 0 ? currentPage + 1 : 2;
+    url.searchParams.set("page", String(nextPage));
+    return url.href;
+  } catch (error) {
+    return null;
+  }
 }
 
 async function applySingleJobInCurrentTab(payload) {
@@ -86,6 +288,16 @@ async function applySingleJobInCurrentTab(payload) {
       url: location.href,
       dryRun
     });
+
+    if (isAlreadyAppliedPage()) {
+      return {
+        jobId,
+        title,
+        company,
+        status: "already_submitted",
+        details: "Job appears already applied based on page signals."
+      };
+    }
 
     await waitForPageReady(12000);
     const applyButton = await waitForApplyButton(10000);
@@ -133,6 +345,136 @@ async function applySingleJobInCurrentTab(payload) {
   } finally {
     isApplyingInTab = false;
   }
+}
+
+async function probeApplyOutcome() {
+  const url = location.href;
+  const title = getDetailTitle() || normalizeText(document.title || "") || "Unknown title";
+  const bodyText = normalizeText(document.body?.innerText || "").toLowerCase();
+
+  const submittedPatterns = [
+    "application submitted",
+    "thank you for applying",
+    "application received",
+    "you have applied",
+    "successfully applied"
+  ];
+  const alreadyPatterns = [
+    "already applied",
+    "withdraw application",
+    "application already submitted"
+  ];
+
+  const matchedSignals = submittedPatterns.filter((pattern) => bodyText.includes(pattern));
+  const alreadySignals = alreadyPatterns.filter((pattern) => bodyText.includes(pattern));
+  const urlSignals = [];
+  if (/application-submitted|apply-confirmation|thank/.test(url.toLowerCase())) {
+    urlSignals.push("url_confirmation_pattern");
+  }
+  if (/already-applied|application-history/.test(url.toLowerCase())) {
+    urlSignals.push("url_already_applied_pattern");
+  }
+
+  const alreadyApplied = alreadySignals.length > 0 || urlSignals.includes("url_already_applied_pattern");
+  const submitted = matchedSignals.length > 0 || urlSignals.includes("url_confirmation_pattern");
+  const status = alreadyApplied ? "already_submitted" : submitted ? "submitted" : "unknown";
+  return {
+    status,
+    title,
+    evidence: {
+      url,
+      matchedSignals,
+      alreadySignals,
+      urlSignals
+    }
+  };
+}
+
+async function completeDiceWizard(payload) {
+  const maxFormSteps = Math.max(1, Number(payload?.maxFormSteps || 12));
+  const profile = payload?.profile || {};
+
+  await waitForPageReady(12000);
+
+  for (let step = 0; step < maxFormSteps; step += 1) {
+    if (isAlreadyAppliedPage()) {
+      return {
+        status: "already_submitted",
+        details: "Wizard indicates this job was already applied."
+      };
+    }
+
+    if (isSubmissionConfirmationPage()) {
+      return {
+        status: "submitted",
+        details: "Wizard completion signals detected."
+      };
+    }
+
+    fillKnownFields(profile);
+
+    if (hasFileUploadInput()) {
+      const continueBtn = findWizardButtonByRegex(/continue|next|review|skip/i);
+      if (continueBtn) {
+        continueBtn.click();
+        await wait(1200);
+        continue;
+      }
+
+      return {
+        status: "manual_review_required",
+        details: "Wizard requires file upload or attachment."
+      };
+    }
+
+    const submitBtn = findWizardButtonByRegex(/submit|finish|complete|send|apply now|apply/i);
+    if (submitBtn) {
+      submitBtn.click();
+      await wait(1800);
+      if (isSubmissionConfirmationPage()) {
+        return {
+          status: "submitted",
+          details: "Submit action completed and confirmation detected."
+        };
+      }
+    }
+
+    const nextBtn = findWizardButtonByRegex(/continue|next|review|save and continue|proceed/i);
+    if (nextBtn) {
+      nextBtn.click();
+      await wait(1300);
+      continue;
+    }
+
+    const visualFlow = await runVisualFlowFallback({ profile, maxAttempts: 2 });
+    if (visualFlow.advanced) {
+      await wait(1200);
+      continue;
+    }
+    if (visualFlow.status === "submitted" || visualFlow.status === "already_submitted") {
+      return visualFlow;
+    }
+    if (visualFlow.status === "manual_review_required") {
+      return visualFlow;
+    }
+
+    if (isSubmissionConfirmationPage()) {
+      return {
+        status: "submitted",
+        details: "Confirmation detected after wizard navigation."
+      };
+    }
+
+    return {
+      status: "manual_review_required",
+      details: "Wizard step has no deterministic next/submit action."
+    };
+  }
+
+  return {
+    status: "manual_review_required",
+    details: "Wizard max step limit reached before confirmation."
+  };
 }
 
 function collectJobCards() {
@@ -207,7 +549,8 @@ function extractJobFromCard(card) {
     title: getCardTitle(card),
     company: getCardCompany(card),
     url,
-    easyApply: looksEasyApply(card)
+    easyApply: looksEasyApply(card),
+    alreadyApplied: isAlreadyAppliedCard(card)
   };
 }
 
@@ -427,6 +770,13 @@ async function attemptApply({ applyButton, maxFormSteps, profile }) {
   await wait(1300);
 
   for (let step = 0; step < maxFormSteps; step += 1) {
+    if (isAlreadyAppliedPage()) {
+      return {
+        status: "already_submitted",
+        details: "Job appears already applied."
+      };
+    }
+
     fillKnownFields(profile);
 
     if (hasFileUploadInput()) {
@@ -462,6 +812,18 @@ async function attemptApply({ applyButton, maxFormSteps, profile }) {
       continue;
     }
 
+    const visualFlow = await runVisualFlowFallback({ profile, maxAttempts: 2 });
+    if (visualFlow.advanced) {
+      await wait(900);
+      continue;
+    }
+    if (visualFlow.status === "submitted" || visualFlow.status === "already_submitted") {
+      return visualFlow;
+    }
+    if (visualFlow.status === "manual_review_required") {
+      return visualFlow;
+    }
+
     if (!isApplyModalOpen()) {
       return {
         status: "submitted",
@@ -482,6 +844,9 @@ async function attemptApply({ applyButton, maxFormSteps, profile }) {
 }
 
 function fillKnownFields(profile) {
+  fillChoiceFields(profile);
+  fillSelectFields(profile);
+
   const inputs = Array.from(document.querySelectorAll("input, textarea, select"));
 
   for (const input of inputs) {
@@ -504,6 +869,10 @@ function fillKnownFields(profile) {
     }
 
     const context = getFieldContext(input);
+    if (isSensitiveDiversityQuestion(context)) {
+      continue;
+    }
+
     const value = resolveFieldValue(context, profile);
 
     if (!value) {
@@ -514,6 +883,113 @@ function fillKnownFields(profile) {
     input.value = value;
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+}
+
+function fillSelectFields(profile) {
+  const selects = Array.from(document.querySelectorAll("select"));
+  for (const select of selects) {
+    if (!isElementVisible(select) || select.disabled) {
+      continue;
+    }
+    if (select.value && select.value.trim()) {
+      continue;
+    }
+
+    const context = getFieldContext(select);
+    if (isSensitiveDiversityQuestion(context)) {
+      continue;
+    }
+
+    const answer = resolveFieldValue(context, profile);
+    if (!answer) {
+      continue;
+    }
+
+    const options = Array.from(select.options || []);
+    const matched = options.find((opt) => {
+      const label = normalizeText(opt.textContent || "").toLowerCase();
+      const value = normalizeText(opt.value || "").toLowerCase();
+      const needle = normalizeText(answer).toLowerCase();
+      if (!needle) {
+        return false;
+      }
+      return label === needle || value === needle || label.includes(needle) || value.includes(needle);
+    }) || matchYesNoOption(options, answer);
+
+    if (!matched) {
+      continue;
+    }
+
+    select.value = matched.value;
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+}
+
+function fillChoiceFields(profile) {
+  const radios = Array.from(document.querySelectorAll("input[type='radio']"));
+  const byName = new Map();
+
+  for (const radio of radios) {
+    if (!isElementVisible(radio) || radio.disabled) {
+      continue;
+    }
+    const name = radio.name || radio.id || `anon-${Math.random().toString(36).slice(2, 8)}`;
+    if (!byName.has(name)) {
+      byName.set(name, []);
+    }
+    byName.get(name).push(radio);
+  }
+
+  for (const group of byName.values()) {
+    if (group.some((r) => r.checked)) {
+      continue;
+    }
+    const context = getFieldContext(group[0]);
+    if (isSensitiveDiversityQuestion(context)) {
+      continue;
+    }
+
+    const answer = resolveFieldValue(context, profile);
+    if (!answer) {
+      continue;
+    }
+
+    const matched = group.find((radio) => {
+      const label = getChoiceLabel(radio).toLowerCase();
+      const needle = normalizeText(answer).toLowerCase();
+      return label === needle || label.includes(needle);
+    }) || matchYesNoRadio(group, answer);
+
+    if (!matched) {
+      continue;
+    }
+
+    matched.click();
+    matched.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  const checkboxes = Array.from(document.querySelectorAll("input[type='checkbox']"));
+  for (const checkbox of checkboxes) {
+    if (!isElementVisible(checkbox) || checkbox.disabled || checkbox.checked) {
+      continue;
+    }
+    const context = getFieldContext(checkbox);
+    if (isSensitiveDiversityQuestion(context)) {
+      continue;
+    }
+    if (/terms|privacy|policy|consent to receive|sms|text message/i.test(context)) {
+      continue;
+    }
+
+    const answer = resolveFieldValue(context, profile);
+    const wantsYes = /^(yes|true|y)$/i.test(String(answer || "").trim());
+    if (!wantsYes) {
+      continue;
+    }
+    checkbox.click();
+    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
   }
 }
 
@@ -537,6 +1013,10 @@ function getFieldContext(input) {
 }
 
 function resolveFieldValue(context, profile) {
+  const normalizedWorkAuth = normalizeText(profile.workAuthorization || "").toLowerCase();
+  if (/citizenship|citizen|ethnicity|race|gender|veteran|disability/.test(context)) {
+    return "";
+  }
   if (/full name|legal name|first name|last name|name/.test(context)) {
     return profile.fullName || "";
   }
@@ -558,10 +1038,77 @@ function resolveFieldValue(context, profile) {
   if (/salary|compensation|pay/.test(context)) {
     return profile.salaryExpectation || "";
   }
-  if (/authorization|sponsor|visa/.test(context)) {
-    return profile.workAuthorization || "";
+  if (/require sponsorship|need sponsorship|visa sponsorship|sponsorship/.test(context)) {
+    if (/no sponsorship|do not require|dont require|does not require|no/i.test(normalizedWorkAuth)) {
+      return "No";
+    }
+    if (/require|needs|yes/i.test(normalizedWorkAuth)) {
+      return "Yes";
+    }
+    return "No";
+  }
+  if (/authorized|authorization|eligible to work|work authorization|legally authorized|visa/.test(context)) {
+    if (/yes|authorized|citizen|green card|h1b|ead|tn|opt|cpt/i.test(normalizedWorkAuth)) {
+      return "Yes";
+    }
+    if (/no|not authorized/i.test(normalizedWorkAuth)) {
+      return "No";
+    }
+    return profile.workAuthorization || "Yes";
+  }
+  if (/relocate|relocation|travel/.test(context)) {
+    return "Yes";
+  }
+  if (/background check|drug test/.test(context)) {
+    return "Yes";
   }
   return "";
+}
+
+function getChoiceLabel(input) {
+  const id = input.getAttribute("id");
+  if (id) {
+    const label = document.querySelector(`label[for='${cssEscape(id)}']`);
+    if (label) {
+      return normalizeText(label.textContent || "");
+    }
+  }
+  const wrapping = input.closest("label");
+  if (wrapping) {
+    return normalizeText(wrapping.textContent || "");
+  }
+  const sibling = input.parentElement?.textContent || "";
+  return normalizeText(sibling);
+}
+
+function matchYesNoRadio(group, answer) {
+  const yes = /^(yes|true|y)$/i.test(String(answer || "").trim());
+  const no = /^(no|false|n)$/i.test(String(answer || "").trim());
+  if (!yes && !no) {
+    return null;
+  }
+  return group.find((radio) => {
+    const label = getChoiceLabel(radio).toLowerCase();
+    if (yes) {
+      return /\byes\b|authorized|willing|able/.test(label);
+    }
+    return /\bno\b|not/.test(label);
+  }) || null;
+}
+
+function matchYesNoOption(options, answer) {
+  const yes = /^(yes|true|y)$/i.test(String(answer || "").trim());
+  const no = /^(no|false|n)$/i.test(String(answer || "").trim());
+  if (!yes && !no) {
+    return null;
+  }
+  return options.find((opt) => {
+    const label = normalizeText(opt.textContent || "").toLowerCase();
+    if (yes) {
+      return /\byes\b|authorized|willing|able/.test(label);
+    }
+    return /\bno\b|not/.test(label);
+  }) || null;
 }
 
 function findVisibleButtonByRegex(regex) {
@@ -577,9 +1124,52 @@ function findVisibleButtonByRegex(regex) {
   );
 }
 
+function findWizardButtonByRegex(regex) {
+  const candidates = Array.from(document.querySelectorAll("button, a[role='button'], a, input[type='button'], input[type='submit']"));
+  return (
+    candidates.find((element) => {
+      if (!isElementVisible(element) || element.disabled) {
+        return false;
+      }
+
+      const tag = element.tagName.toLowerCase();
+      const type = (element.getAttribute("type") || "").toLowerCase();
+      const rawText = tag === "input" ? (element.value || "") : (element.textContent || "");
+      const text = normalizeText(rawText).toLowerCase();
+      const aria = normalizeText(element.getAttribute("aria-label") || "").toLowerCase();
+      const combined = `${text} ${aria}`;
+
+      if (/cancel|close|skip to jobs|back to jobs/.test(combined)) {
+        return false;
+      }
+
+      if (tag === "input" && !["submit", "button"].includes(type)) {
+        return false;
+      }
+
+      return regex.test(combined);
+    }) || null
+  );
+}
+
 function hasFileUploadInput() {
   const fileInput = document.querySelector("input[type='file']");
   return Boolean(fileInput && isElementVisible(fileInput));
+}
+
+function isAlreadyAppliedCard(card) {
+  const text = normalizeText(card?.textContent || "").toLowerCase();
+  return /already applied|application submitted|withdraw application|application already submitted/.test(text);
+}
+
+function isAlreadyAppliedPage() {
+  const url = location.href.toLowerCase();
+  const title = normalizeText(document.title || "").toLowerCase();
+  const body = normalizeText(document.body?.innerText || "").toLowerCase();
+  if (/already-applied|application-history/.test(url)) {
+    return true;
+  }
+  return /already applied|already submitted|application already submitted|withdraw application/.test(`${title} ${body}`);
 }
 
 function isApplyModalOpen() {
@@ -603,6 +1193,70 @@ function isElementVisible(element) {
     style.visibility !== "hidden" &&
     style.opacity !== "0"
   );
+}
+
+function isSubmissionConfirmationPage() {
+  const url = location.href.toLowerCase();
+  const title = normalizeText(document.title || "").toLowerCase();
+  const body = normalizeText(document.body?.innerText || "").toLowerCase();
+
+  if (/application-submitted|apply-confirmation|thank/.test(url)) {
+    return true;
+  }
+
+  if (/application submitted|thank you for applying|application received|you have applied/.test(body)) {
+    return true;
+  }
+
+  if (/application submitted|thank you|applied/.test(title) && !url.includes("/wizard")) {
+    return true;
+  }
+
+  return false;
+}
+
+function isSensitiveDiversityQuestion(context) {
+  const value = String(context || "").toLowerCase();
+  return /gender|sex|race|ethnicity|veteran|disability|pronoun|birth|date of birth|ssn|social security/.test(value);
+}
+
+async function runVisualFlowFallback({ profile, maxAttempts }) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (isAlreadyAppliedPage()) {
+      return {
+        status: "already_submitted",
+        details: "Detected already-applied state during visual fallback."
+      };
+    }
+
+    if (isSubmissionConfirmationPage()) {
+      return {
+        status: "submitted",
+        details: "Submission confirmation detected during visual fallback."
+      };
+    }
+
+    fillKnownFields(profile || {});
+
+    const primaryButton = findWizardButtonByRegex(/next|continue|review|submit|finish|complete|send|apply|proceed|save and continue/i);
+    if (!primaryButton) {
+      continue;
+    }
+
+    primaryButton.click();
+    await wait(1200);
+
+    if (isSubmissionConfirmationPage()) {
+      return {
+        status: "submitted",
+        details: "Submitted via visual fallback."
+      };
+    }
+
+    return { advanced: true };
+  }
+
+  return { status: "unknown", details: "Visual fallback did not find a clear action." };
 }
 
 function normalizeText(value) {

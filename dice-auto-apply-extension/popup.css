@@ -76,6 +76,15 @@ button:hover {
   background: #1f5a8c;
 }
 
+.danger {
+  border-color: #8f1d1d;
+  background: #c83a3a;
+}
+
+.danger:hover {
+  background: #a82d2d;
+}
+
 .small {
   font-size: 12px;
   margin: 4px 0;

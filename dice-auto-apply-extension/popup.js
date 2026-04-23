@@ -20,6 +20,8 @@ const statusText = document.getElementById("statusText");
 
 document.getElementById("saveBtn").addEventListener("click", save);
 document.getElementById("runNowBtn").addEventListener("click", runNow);
+document.getElementById("stopBtn").addEventListener("click", stopAutomation);
+document.getElementById("resumeBtn").addEventListener("click", resumeScheduler);
 document.getElementById("openLogsBtn").addEventListener("click", () => chrome.runtime.openOptionsPage());
 document.getElementById("clearLogsBtn").addEventListener("click", clearLogs);
 
@@ -55,6 +57,7 @@ async function loadStatus() {
 
   const parts = [];
   parts.push(`In progress: ${state.inProgress ? "yes" : "no"}`);
+  parts.push(`Stop requested: ${state.stopRequested ? "yes" : "no"}`);
   if (state.lastRunAt) {
     parts.push(`Last run: ${new Date(state.lastRunAt).toLocaleString()}`);
   }
@@ -109,6 +112,26 @@ async function runNow() {
 async function clearLogs() {
   await sendMessage({ type: "automation-clear-logs" });
   feedback.textContent = "Logs cleared.";
+  await loadStatus();
+}
+
+async function stopAutomation() {
+  const response = await sendMessage({ type: "automation-stop" });
+  const inProgress = response.result?.inProgress ? "Current run will stop after this job." : "No run is active.";
+  feedback.textContent = `Stop requested. Scheduler disabled. ${inProgress}`;
+  elements.scheduleEnabled.checked = false;
+  await loadStatus();
+}
+
+async function resumeScheduler() {
+  const payload = {
+    scheduleEnabled: true
+  };
+  await sendMessage({
+    type: "automation-save-settings",
+    payload
+  });
+  feedback.textContent = "Scheduler resumed.";
   await loadStatus();
 }
 

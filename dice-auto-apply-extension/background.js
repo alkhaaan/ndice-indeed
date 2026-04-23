@@ -7,6 +7,7 @@
 };
 
 const ALARM_HEARTBEAT = "automation-heartbeat";
+const RUN_STALE_TIMEOUT_MS = 20 * 60 * 1000;
 const SCHEDULE_SLOTS_ET = [
   { key: "09:00", minutes: 9 * 60 },
   { key: "13:00", minutes: 13 * 60 },
@@ -40,6 +41,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.runtime.onStartup.addListener(async () => {
   await setupScheduler();
+  await recoverStaleRunLock();
   await appendLog("info", "background", "Browser startup: scheduler verified.");
 });
 
@@ -63,7 +65,10 @@ async function handleMessage(message, sender) {
     case "automation-save-settings":
       return saveSettings(message.payload || {});
     case "automation-run-now":
+      await clearStopRequest("manual_run");
       return runAutomation("manual");
+    case "automation-stop":
+      return requestStopAutomation();
     case "automation-get-logs":
       return getLogs();
     case "automation-clear-logs":
@@ -95,7 +100,9 @@ async function initializeDefaults() {
       inProgress: false,
       lastRunAt: null,
       lastRunResult: null,
-      currentRunId: null
+      currentRunId: null,
+      runStartedAt: null,
+      stopRequested: false
     });
   }
 
@@ -117,6 +124,10 @@ async function setupScheduler() {
 async function checkScheduledRun() {
   const settings = await getSettings();
   if (!settings.scheduleEnabled) {
+    return;
+  }
+  const state = (await getStorage(STORAGE_KEYS.STATE)) || {};
+  if (state.stopRequested) {
     return;
   }
 
@@ -157,7 +168,12 @@ async function checkScheduledRun() {
 }
 
 async function runAutomation(trigger) {
+  await recoverStaleRunLock();
   const state = (await getStorage(STORAGE_KEYS.STATE)) || {};
+  if (state.stopRequested && trigger !== "manual") {
+    await appendLog("warn", "background", "Run skipped because stop was requested.", { trigger });
+    return { skipped: true, reason: "stop_requested" };
+  }
   if (state.inProgress) {
     await appendLog("warn", "background", "Run skipped because another run is already in progress.", {
       trigger,
@@ -173,7 +189,8 @@ async function runAutomation(trigger) {
   await setStorage(STORAGE_KEYS.STATE, {
     ...state,
     inProgress: true,
-    currentRunId: runId
+    currentRunId: runId,
+    runStartedAt: new Date().toISOString()
   });
 
   await appendLog("info", "background", "Automation run started.", {
@@ -214,6 +231,14 @@ async function runAutomation(trigger) {
         jobs.push({ jobId, title, status: "already_submitted", skipped: true });
         continue;
       }
+      if (history[jobId]?.status === "already_submitted") {
+        jobs.push({ jobId, title, status: "already_submitted", skipped: true });
+        continue;
+      }
+      if (job.alreadyApplied) {
+        jobs.push({ jobId, title, status: "already_submitted", skipped: true, details: "Skipped because listing indicates already applied." });
+        continue;
+      }
 
       if (!job.easyApply) {
         jobs.push({ jobId, title, status: "not_easy_apply", skipped: true, url: job.url || null });
@@ -227,23 +252,47 @@ async function runAutomation(trigger) {
 
       let jobTab = null;
       try {
+        if (await isStopRequested()) {
+          await appendLog("warn", "background", "Run stopping by user request before opening next job tab.", {
+            runId,
+            jobId
+          });
+          break;
+        }
         await appendLog("info", "background", "Opening job tab.", { runId, jobId, title, url: job.url });
 
-        jobTab = await createTab({ url: job.url, active: true });
+        jobTab = await createTabWithRetry({ url: job.url, active: true });
         await waitForTabComplete(jobTab.id, 60000);
         await ensureContentScript(jobTab.id);
 
-        const applyResponse = await sendTabMessage(jobTab.id, {
-          type: "dice-apply-single-job",
-          payload: {
-            jobId,
-            profile: settings.profile || {},
-            dryRun: Boolean(settings.dryRun),
-            maxFormSteps: Number(settings.maxFormSteps || 10)
+        let applyResult = null;
+        try {
+          const applyResponse = await sendTabMessage(jobTab.id, {
+            type: "dice-apply-single-job",
+            payload: {
+              jobId,
+              profile: settings.profile || {},
+              dryRun: Boolean(settings.dryRun),
+              maxFormSteps: Number(settings.maxFormSteps || 10)
+            }
+          });
+          applyResult = applyResponse?.result || {};
+        } catch (error) {
+          if (!isMessageChannelClosedError(error)) {
+            throw error;
           }
-        });
 
-        const applyResult = applyResponse?.result || {};
+          // Some Dice apply actions navigate away quickly and close the content-script channel
+          // before sendResponse can return. Probe the page state once more before deciding.
+          applyResult = await inferOutcomeAfterChannelClose({
+            tabId: jobTab.id,
+            jobId,
+            title,
+            company: job.company || "",
+            profile: settings.profile || {},
+            maxFormSteps: Number(settings.maxFormSteps || 10)
+          });
+        }
 
         jobs.push({
           jobId,
@@ -305,11 +354,14 @@ async function runAutomation(trigger) {
       status: "completed"
     });
 
+    const latestState = (await getStorage(STORAGE_KEYS.STATE)) || {};
     await setStorage(STORAGE_KEYS.STATE, {
+      ...latestState,
       inProgress: false,
       lastRunAt: new Date().toISOString(),
       lastRunResult: runResult,
-      currentRunId: null
+      currentRunId: null,
+      runStartedAt: null
     });
 
     return { runId, runResult };
@@ -320,11 +372,14 @@ async function runAutomation(trigger) {
       error: error.message
     });
 
+    const latestState = (await getStorage(STORAGE_KEYS.STATE)) || {};
     await setStorage(STORAGE_KEYS.STATE, {
+      ...latestState,
       inProgress: false,
       lastRunAt: new Date().toISOString(),
       lastRunResult: { status: "error", error: error.message },
-      currentRunId: null
+      currentRunId: null,
+      runStartedAt: null
     });
 
     throw error;
@@ -370,6 +425,152 @@ async function safeCloseTab(tabId) {
   return new Promise((resolve) => {
     chrome.tabs.remove(tabId, () => {
       resolve();
+    });
+  });
+}
+
+async function createTabWithRetry(createProperties, maxAttempts = 4) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await createTab(createProperties);
+    } catch (error) {
+      lastError = error;
+      const retriable = /Tabs cannot be edited right now/i.test(error.message || "");
+      if (!retriable || attempt === maxAttempts) {
+        throw error;
+      }
+      await wait(350 * attempt);
+    }
+  }
+  throw lastError || new Error("Failed to create tab.");
+}
+
+function isMessageChannelClosedError(error) {
+  const message = String(error?.message || "");
+  return /message channel closed before a response was received/i.test(message);
+}
+
+async function inferOutcomeAfterChannelClose({ tabId, jobId, title, company, profile, maxFormSteps }) {
+  let lastUrl = "";
+  let lastTabTitle = "";
+  let inferredTitle = title;
+
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    await wait(1100);
+    const tab = await getTabSafe(tabId);
+    if (!tab) {
+      return {
+        title: inferredTitle,
+        company,
+        status: "manual_review_required",
+        details: "Apply flow navigated before confirmation and tab became unavailable."
+      };
+    }
+
+    lastUrl = String(tab.url || "");
+    lastTabTitle = String(tab.title || "");
+    if (lastTabTitle && inferredTitle === "Unknown title") {
+      inferredTitle = lastTabTitle;
+    }
+
+    try {
+      if (lastUrl.includes("dice.com")) {
+        await ensureContentScript(tabId);
+        const probeResponse = await sendTabMessage(tabId, { type: "dice-probe-apply-outcome" });
+        const probe = probeResponse?.result || {};
+        if (probe.title && inferredTitle === "Unknown title") {
+          inferredTitle = probe.title;
+        }
+        if (probe.status === "submitted" || probe.status === "already_submitted") {
+          return {
+            title: probe.title || inferredTitle,
+            company,
+            status: probe.status,
+            details: probe.status === "already_submitted"
+              ? "Already-applied state inferred from post-navigation signals."
+              : "Submission inferred from post-navigation confirmation signals.",
+            evidence: probe.evidence || {}
+          };
+        }
+      }
+    } catch (error) {
+      // Continue polling; some transitions temporarily detach the content script.
+    }
+
+    const combined = `${lastUrl} ${lastTabTitle}`.toLowerCase();
+    if (/application-submitted|apply-confirmation|thank|submitted/.test(combined)) {
+      return {
+        title: inferredTitle,
+        company,
+        status: "submitted",
+        details: "Submission inferred from URL/title after channel closed."
+      };
+    }
+
+    if (lastUrl && !lastUrl.includes("dice.com")) {
+      return {
+        title: inferredTitle,
+        company,
+        status: "manual_review_required",
+        details: "Redirected to external application page; manual completion may be required."
+      };
+    }
+
+    const isDiceWizard = /dice\.com\/job-applications\/.+\/wizard/i.test(lastUrl);
+    if (isDiceWizard) {
+      try {
+        await ensureContentScript(tabId);
+        const wizardResponse = await sendTabMessage(tabId, {
+          type: "dice-complete-wizard",
+          payload: {
+            profile: profile || {},
+            maxFormSteps: Math.max(8, Number(maxFormSteps || 10))
+          }
+        });
+        const wizardResult = wizardResponse?.result || {};
+        if (wizardResult.status === "submitted") {
+          return {
+            title: inferredTitle,
+            company,
+            status: "submitted",
+            details: wizardResult.details || "Wizard automation completed with submission."
+          };
+        }
+
+        return {
+          title: inferredTitle,
+          company,
+          status: wizardResult.status || "manual_review_required",
+          details: wizardResult.details || "Wizard automation could not reach final submit."
+        };
+      } catch (error) {
+        return {
+          title: inferredTitle,
+          company,
+          status: "manual_review_required",
+          details: `Wizard automation error: ${error.message}`
+        };
+      }
+    }
+  }
+
+  return {
+    title: inferredTitle,
+    company,
+    status: "manual_review_required",
+    details: `Apply flow navigated before confirmation; verify submission manually. Last URL: ${lastUrl || "unknown"}`
+  };
+}
+
+function getTabSafe(tabId) {
+  return new Promise((resolve) => {
+    chrome.tabs.get(tabId, (tab) => {
+      if (chrome.runtime.lastError) {
+        resolve(null);
+        return;
+      }
+      resolve(tab || null);
     });
   });
 }
@@ -425,6 +626,76 @@ async function mergeJobHistory(jobRecords) {
   await setStorage(STORAGE_KEYS.JOB_HISTORY, history);
 }
 
+async function recoverStaleRunLock() {
+  const state = (await getStorage(STORAGE_KEYS.STATE)) || {};
+  if (!state.inProgress) {
+    return;
+  }
+
+  const startedAtMs = state.runStartedAt ? Date.parse(state.runStartedAt) : NaN;
+  const hasValidStart = Number.isFinite(startedAtMs);
+  const isStale = !hasValidStart || Date.now() - startedAtMs > RUN_STALE_TIMEOUT_MS;
+
+  if (!isStale) {
+    return;
+  }
+
+  await setStorage(STORAGE_KEYS.STATE, {
+    ...state,
+    inProgress: false,
+    currentRunId: null,
+    runStartedAt: null
+  });
+
+  await appendLog("warn", "background", "Recovered stale in-progress run lock.", {
+    previousRunId: state.currentRunId || null,
+    previousRunStartedAt: state.runStartedAt || null
+  });
+}
+
+async function requestStopAutomation() {
+  const state = (await getStorage(STORAGE_KEYS.STATE)) || {};
+  const settings = await getSettings();
+
+  await setStorage(STORAGE_KEYS.SETTINGS, {
+    ...settings,
+    scheduleEnabled: false
+  });
+
+  await setStorage(STORAGE_KEYS.STATE, {
+    ...state,
+    stopRequested: true
+  });
+
+  await appendLog("warn", "popup", "Stop requested by user. Scheduler disabled and run will stop safely.", {
+    inProgress: Boolean(state.inProgress),
+    currentRunId: state.currentRunId || null
+  });
+
+  return {
+    stopRequested: true,
+    inProgress: Boolean(state.inProgress),
+    currentRunId: state.currentRunId || null
+  };
+}
+
+async function clearStopRequest(reason) {
+  const state = (await getStorage(STORAGE_KEYS.STATE)) || {};
+  if (!state.stopRequested) {
+    return;
+  }
+  await setStorage(STORAGE_KEYS.STATE, {
+    ...state,
+    stopRequested: false
+  });
+  await appendLog("info", "background", "Stop request cleared.", { reason: reason || "unknown" });
+}
+
+async function isStopRequested() {
+  const state = (await getStorage(STORAGE_KEYS.STATE)) || {};
+  return Boolean(state.stopRequested);
+}
+
 async function getSettings() {
   const saved = (await getStorage(STORAGE_KEYS.SETTINGS)) || {};
   return {
@@ -449,6 +720,9 @@ async function saveSettings(partial) {
   };
 
   await setStorage(STORAGE_KEYS.SETTINGS, next);
+  if (partial.scheduleEnabled === true) {
+    await clearStopRequest("settings_schedule_enabled");
+  }
   await appendLog("info", "popup", "Settings updated.", {
     scheduleEnabled: next.scheduleEnabled,
     maxJobsPerRun: next.maxJobsPerRun,
@@ -671,4 +945,8 @@ function executeScript(tabId, files) {
       }
     );
   });
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
