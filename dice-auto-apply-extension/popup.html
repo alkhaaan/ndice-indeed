@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dice Auto Apply</title>
+  <title>Dice Autofill Assistant</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <main class="container">
-    <h1>Dice Auto Apply</h1>
+    <h1>Dice Autofill Assistant</h1>
 
     <section class="card">
       <h2>Schedule (ET)</h2>
@@ -31,7 +31,7 @@
       <input id="maxFormSteps" type="number" min="1" max="30" />
 
       <label class="row">
-        <span>Dry run (no submit click)</span>
+        <span>Dry run (no final submit)</span>
         <input id="dryRun" type="checkbox" />
       </label>
     </section>
@@ -56,7 +56,7 @@
         <button id="runNowBtn">Run now</button>
       </div>
       <div class="buttonRow">
-        <button id="stopBtn" class="danger">Stop Auto Applicant</button>
+        <button id="stopBtn" class="danger">Stop Scheduler</button>
         <button id="openLogsBtn">Open logs</button>
       </div>
       <div class="buttonRow">

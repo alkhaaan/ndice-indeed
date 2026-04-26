@@ -39,7 +39,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function collectJobsFromSearch(payload) {
   const maxJobsPerRun = Math.max(1, Number(payload?.maxJobsPerRun || 15));
-  const maxPaginationPages = Math.max(1, Math.min(25, Number(payload?.maxPaginationPages || Math.ceil(maxJobsPerRun / 8) + 2)));
+  const requestedPages = Number(payload?.maxPaginationPages);
+  const maxPaginationPages = Math.max(
+    1,
+    Math.min(25, Number.isFinite(requestedPages) && requestedPages > 0 ? requestedPages : 1)
+  );
   const history = payload?.history || {};
 
   if (!location.hostname.includes("dice.com")) {
@@ -429,14 +433,10 @@ async function completeDiceWizard(payload) {
 
     const submitBtn = findWizardButtonByRegex(/submit|finish|complete|send|apply now|apply/i);
     if (submitBtn) {
-      submitBtn.click();
-      await wait(1800);
-      if (isSubmissionConfirmationPage()) {
-        return {
-          status: "submitted",
-          details: "Submit action completed and confirmation detected."
-        };
-      }
+      return {
+        status: "manual_review_required",
+        details: "Application is ready for final review and submit confirmation."
+      };
     }
 
     const nextBtn = findWizardButtonByRegex(/continue|next|review|save and continue|proceed/i);
@@ -794,15 +794,10 @@ async function attemptApply({ applyButton, maxFormSteps, profile }) {
 
     const submitBtn = findVisibleButtonByRegex(/submit|apply|finish|send/i);
     if (submitBtn) {
-      submitBtn.click();
-      await wait(1300);
-
-      if (!isApplyModalOpen()) {
-        return {
-          status: "submitted",
-          details: "Submit action completed and modal closed."
-        };
-      }
+      return {
+        status: "manual_review_required",
+        details: "Application is ready for final review and submit confirmation."
+      };
     }
 
     const nextBtn = findVisibleButtonByRegex(/continue|next|review|save and continue/i);
@@ -1238,7 +1233,7 @@ async function runVisualFlowFallback({ profile, maxAttempts }) {
 
     fillKnownFields(profile || {});
 
-    const primaryButton = findWizardButtonByRegex(/next|continue|review|submit|finish|complete|send|apply|proceed|save and continue/i);
+    const primaryButton = findWizardButtonByRegex(/next|continue|review|proceed|save and continue/i);
     if (!primaryButton) {
       continue;
     }

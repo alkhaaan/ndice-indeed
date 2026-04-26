@@ -205,7 +205,7 @@ async function runAutomation(trigger) {
     const sourceTab = await resolveSourceTab(trigger, settings.searchUrl);
     await ensureContentScript(sourceTab.id);
 
-    const listingResponse = await sendTabMessage(sourceTab.id, {
+    const listingResponse = await sendTabMessageResilient(sourceTab.id, {
       type: "dice-collect-jobs",
       payload: {
         maxJobsPerRun: Number(settings.maxJobsPerRun || 15),
@@ -927,6 +927,34 @@ function sendTabMessage(tabId, message) {
       resolve(response);
     });
   });
+}
+
+async function sendTabMessageResilient(tabId, message, options = {}) {
+  const attempts = Math.max(1, Number(options.attempts || 3));
+  const retryDelayMs = Math.max(200, Number(options.retryDelayMs || 700));
+
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await sendTabMessage(tabId, message);
+    } catch (error) {
+      lastError = error;
+      const retriable = isMessageChannelClosedError(error) || isNoReceivingEndError(error);
+      if (!retriable || attempt >= attempts) {
+        throw error;
+      }
+
+      await wait(retryDelayMs * attempt);
+      await ensureContentScript(tabId);
+    }
+  }
+
+  throw lastError || new Error("Failed to message tab.");
+}
+
+function isNoReceivingEndError(error) {
+  const message = String(error?.message || "");
+  return /receiving end does not exist/i.test(message);
 }
 
 function executeScript(tabId, files) {

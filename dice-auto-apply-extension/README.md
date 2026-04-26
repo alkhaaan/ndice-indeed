@@ -1,20 +1,21 @@
-﻿# Dice Auto Apply Assistant (Chrome Extension)
+# Dice Application Autofill Assistant (Chrome Extension)
 
 ## What it does
 - Runs automation on Dice job search pages.
 - Manual run mode uses your currently open Dice search results page.
-- Opens each listed job in a new tab, attempts apply, then closes that tab before moving to next job.
+- Opens each listed job in a new tab, autofills supported application steps, and stops for final review before submission.
 - Scheduled daily runs in Eastern Time at:
   - 9:00 AM ET
   - 1:00 PM ET
   - 6:00 PM ET
 - Saves detailed logs so you can review failures and improve rules.
 - Supports dry-run mode for safe testing.
+- Uses a review-first workflow for the final submit step.
 
 ## Files
 - `manifest.json`: Extension config (MV3)
 - `background.js`: Scheduler, orchestration, per-job tab pipeline, storage, logs
-- `dice-content.js`: Search-page job collection + single-job apply logic on dice.com
+- `dice-content.js`: Search-page job collection + single-job autofill logic on dice.com
 - `popup.html/js/css`: Controls for settings and manual run
 - `logs.html/js/css`: Full log review and JSON export
 
@@ -45,5 +46,5 @@
 
 ## Notes
 - Dice UI changes can break selectors; logging is included to spot these quickly.
-- Some applications require uploads or custom questions and may still need manual review.
+- Some applications require uploads, custom questions, or explicit submit confirmation and may still need manual review.
 - Use responsibly and in line with dice.com terms and your local requirements.
