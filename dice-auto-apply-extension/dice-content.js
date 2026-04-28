@@ -433,9 +433,17 @@ async function completeDiceWizard(payload) {
 
     const submitBtn = findWizardButtonByRegex(/submit|finish|complete|send|apply now|apply/i);
     if (submitBtn) {
+      submitBtn.click();
+      await wait(1800);
+      if (isSubmissionConfirmationPage() || !isApplyModalOpen()) {
+        return {
+          status: "submitted",
+          details: "Submit action completed from wizard final step."
+        };
+      }
       return {
         status: "manual_review_required",
-        details: "Application is ready for final review and submit confirmation."
+        details: "Submit was attempted but confirmation was not detected."
       };
     }
 
@@ -810,9 +818,17 @@ async function attemptApply({ applyButton, maxFormSteps, profile }) {
 
     const submitBtn = findVisibleButtonByRegex(/submit|apply|finish|send/i);
     if (submitBtn) {
+      submitBtn.click();
+      await wait(1500);
+      if (isSubmissionConfirmationPage() || !isApplyModalOpen()) {
+        return {
+          status: "submitted",
+          details: "Submit action completed and flow closed."
+        };
+      }
       return {
         status: "manual_review_required",
-        details: "Application is ready for final review and submit confirmation."
+        details: "Submit was attempted but confirmation was not detected."
       };
     }
 
