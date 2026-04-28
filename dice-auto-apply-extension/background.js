@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS = {
   scheduleEnabled: true,
   searchUrl: "https://www.dice.com/jobs?q=&filters.postedDate=ONE&sort=DATE",
   maxJobsPerRun: 15,
-  maxPaginationPages: 3,
+  maxPaginationPages: 10,
   scheduleWindowMinutes: 12,
   maxFormSteps: 10,
   dryRun: false,
@@ -210,7 +210,7 @@ async function runAutomation(trigger) {
       type: "dice-collect-jobs",
       payload: {
         maxJobsPerRun: Number(settings.maxJobsPerRun || 15),
-        maxPaginationPages: Math.max(1, Math.min(25, Number(settings.maxPaginationPages || 3))),
+        maxPaginationPages: Math.max(1, Math.min(25, Number(settings.maxPaginationPages || 10))),
         history
       }
     });
