@@ -652,7 +652,7 @@ function getJobIdFromText(card) {
 
 function looksEasyApply(card) {
   const text = normalizeText(card.textContent || "").toLowerCase();
-  return /easy apply|quick apply|1-click apply|instant apply/.test(text);
+  return /easy apply|apply now|quick apply|1-click apply|instant apply/.test(text);
 }
 
 function getDetailTitle() {
