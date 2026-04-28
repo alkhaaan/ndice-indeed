@@ -1020,7 +1020,9 @@ function getFieldContext(input) {
     labelText = normalizeText(input.closest("label")?.textContent || "");
   }
 
-  return [aria, placeholder, name, labelText].join(" ").toLowerCase();
+  const questionText = getQuestionContextText(input);
+
+  return [aria, placeholder, name, labelText, questionText].join(" ").toLowerCase();
 }
 
 function resolveFieldValue(context, profile) {
@@ -1070,9 +1072,32 @@ function resolveFieldValue(context, profile) {
   if (/relocate|relocation|travel/.test(context)) {
     return "Yes";
   }
+  if (/on[-\s]?site|in[-\s]?office|come into (the )?office|hybrid|regular basis|commute/.test(context)) {
+    return "Yes";
+  }
   if (/background check|drug test/.test(context)) {
     return "Yes";
   }
+  return "";
+}
+
+function getQuestionContextText(input) {
+  const containers = [
+    input.closest("[role='radiogroup']"),
+    input.closest("fieldset"),
+    input.closest("[data-testid*='question']"),
+    input.closest("[class*='question']"),
+    input.closest("section"),
+    input.closest("form")
+  ].filter(Boolean);
+
+  for (const container of containers) {
+    const text = normalizeText(container.textContent || "");
+    if (text.length >= 12) {
+      return text.slice(0, 700);
+    }
+  }
+
   return "";
 }
 
