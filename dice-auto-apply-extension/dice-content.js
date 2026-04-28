@@ -481,9 +481,12 @@ function collectJobCards() {
   const selectors = [
     "[data-cy='card-container']",
     "[id^='position-card-']",
+    "[data-testid*='job-card']",
+    "[data-testid*='search-result']",
+    "li[data-jobid]",
     "article[data-jobid]",
-    "article",
-    ".search-card"
+    ".search-card",
+    ".job-card"
   ];
 
   const cards = [];
@@ -506,7 +509,9 @@ function collectJobCards() {
   }
 
   if (cards.length === 0) {
-    const anchors = Array.from(document.querySelectorAll("a[href*='/job-detail/']"));
+    const anchors = Array.from(
+      document.querySelectorAll("a[href*='/job-detail/'], a[href*='/jobs/detail/'], a[href*='jobId=']")
+    );
     for (const anchor of anchors) {
       const card = anchor.closest("article, li, div") || anchor;
       const key = getJobId(card) || anchor.href;
@@ -525,6 +530,7 @@ function extractJobFromCard(card) {
   const anchor =
     card.querySelector("a[data-cy='card-title-link']") ||
     card.querySelector("a[href*='/job-detail/']") ||
+    card.querySelector("a[href*='/jobs/detail/']") ||
     card.querySelector("a[href*='jobId=']") ||
     card.querySelector("a");
 
@@ -538,7 +544,7 @@ function extractJobFromCard(card) {
   }
 
   const url = new URL(hrefValue, location.origin).href;
-  const isJobUrl = /\/job-detail\/|[?&]jobId=/i.test(url);
+  const isJobUrl = /\/job-detail\/|\/jobs\/detail\/|[?&]jobId=/i.test(url);
   if (!isJobUrl) {
     return null;
   }
@@ -557,9 +563,11 @@ function extractJobFromCard(card) {
 function getCardTitle(card) {
   const node =
     card.querySelector("a[data-cy='card-title-link']") ||
+    card.querySelector("[data-testid='job-title']") ||
     card.querySelector("h5") ||
     card.querySelector("h3") ||
     card.querySelector("a[href*='/job-detail/']") ||
+    card.querySelector("a[href*='/jobs/detail/']") ||
     card.querySelector("a");
 
   return normalizeText(node?.textContent || "Unknown title");
@@ -598,7 +606,10 @@ function getJobId(card) {
     }
   }
 
-  const anchor = card.querySelector("a[href*='/job-detail/']") || card.querySelector("a[href*='jobId=']");
+  const anchor =
+    card.querySelector("a[href*='/job-detail/']") ||
+    card.querySelector("a[href*='/jobs/detail/']") ||
+    card.querySelector("a[href*='jobId=']");
   if (!anchor) {
     return null;
   }
@@ -610,6 +621,11 @@ function getJobIdFromHref(href) {
   const detailMatch = href.match(/\/job-detail\/([^/?#]+)/i);
   if (detailMatch) {
     return decodeURIComponent(detailMatch[1]);
+  }
+
+  const altDetailMatch = href.match(/\/jobs\/detail\/([^/?#]+)/i);
+  if (altDetailMatch) {
+    return decodeURIComponent(altDetailMatch[1]);
   }
 
   const queryMatch = href.match(/[?&]jobId=([^&]+)/i);
