@@ -125,6 +125,32 @@ app.get("/billing/portal", async (req, res) => {
   res.redirect(303, session.url);
 });
 
+app.get("/billing/success", (_req, res) => {
+  res.type("html").send(`
+    <!doctype html>
+    <html lang="en">
+      <head><meta charset="utf-8"><title>Subscription active</title></head>
+      <body style="font-family: system-ui, sans-serif; max-width: 640px; margin: 48px auto; line-height: 1.5;">
+        <h1>Subscription active</h1>
+        <p>Thanks for subscribing to NDice Indeed. Return to the extension and click <strong>Refresh Plan</strong> to unlock your plan.</p>
+      </body>
+    </html>
+  `);
+});
+
+app.get("/billing/cancel", (_req, res) => {
+  res.type("html").send(`
+    <!doctype html>
+    <html lang="en">
+      <head><meta charset="utf-8"><title>Checkout canceled</title></head>
+      <body style="font-family: system-ui, sans-serif; max-width: 640px; margin: 48px auto; line-height: 1.5;">
+        <h1>Checkout canceled</h1>
+        <p>Your subscription was not started. You can return to NDice Indeed and choose a plan whenever you're ready.</p>
+      </body>
+    </html>
+  `);
+});
+
 app.post("/api/subscription/validate", async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const licenseKey = normalizeLicenseKey(req.body?.licenseKey);
