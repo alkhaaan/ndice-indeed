@@ -240,7 +240,12 @@ async function findSubscriptionRecord({ email, licenseKey }) {
   if (byKey && (!email || byKey.email === email)) {
     return byKey;
   }
-  return Object.values(store).find((record) => record.email === email && record.licenseKey === licenseKey) || null;
+  const storedRecord = Object.values(store).find((record) => record.email === email && record.licenseKey === licenseKey);
+  if (storedRecord) {
+    return storedRecord;
+  }
+
+  return findStripeSubscriptionRecord({ email, licenseKey });
 }
 
 async function upsertSubscriptionRecord(record) {
@@ -295,6 +300,40 @@ function resolvePlanKey(value) {
 
 function resolvePlanSlug(value) {
   return PLAN_CATALOG[resolvePlanKey(value)].slug;
+}
+
+async function findStripeSubscriptionRecord({ email, licenseKey }) {
+  if (!email || !licenseKey) {
+    return null;
+  }
+
+  const query = `metadata['license_key']:'${stripeSearchValue(licenseKey)}' AND metadata['email']:'${stripeSearchValue(email)}'`;
+  const result = await stripe.subscriptions.search({
+    query,
+    limit: 1
+  });
+
+  const subscription = result.data[0];
+  if (!subscription) {
+    return null;
+  }
+
+  return {
+    email,
+    licenseKey,
+    plan: resolvePlanSlug(subscription.metadata?.plan),
+    stripeCustomerId: subscription.customer,
+    stripeSubscriptionId: subscription.id,
+    status: subscription.status,
+    currentPeriodEnd: subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000).toISOString()
+      : null,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function stripeSearchValue(value) {
+  return String(value || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
 function normalizeEmail(value) {
