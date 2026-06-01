@@ -1,13 +1,15 @@
-# Dice Application Autofill Assistant (Chrome Extension)
+# NDice Indeed (Chrome Extension)
 
 ## What it does
 - Runs automation on Dice job search pages.
 - Manual run mode uses your currently open Dice search results page.
 - Opens each listed job in a new tab, autofills supported application steps, and stops for final review before submission.
-- Scheduled daily runs in Eastern Time at:
-  - 9:00 AM ET
-  - 1:00 PM ET
-  - 6:00 PM ET
+- Scheduled daily runs at 3 random times in the end user's local timezone.
+- Scheduler never runs between 11:00 PM and 5:00 AM local time.
+- Free plan supports up to 10 live applications per day.
+- Starter supports up to 100 live applications per day for $9.99/month.
+- Pro supports up to 450 live applications per day for $22.99/month.
+- Unlimited supports unlimited live applications for $35.99/month, subject to fair-use protections.
 - Saves detailed logs so you can review failures and improve rules.
 - Supports dry-run mode for safe testing.
 - Uses a review-first workflow for the final submit step.
@@ -18,6 +20,14 @@
 - `dice-content.js`: Search-page job collection + single-job autofill logic on dice.com
 - `popup.html/js/css`: Controls for settings and manual run
 - `logs.html/js/css`: Full log review and JSON export
+
+## Subscription
+- Free: 10 live submissions per local day, plus dry runs, local profile autofill, and logs.
+- Starter monthly: 100 live submissions per local day for $9.99/month.
+- Pro monthly: 450 live submissions per local day for $22.99/month.
+- Unlimited monthly: unlimited live submissions for $35.99/month, subject to fair-use protections.
+- Billing uses an external Stripe-backed service. Configure the checkout, portal, and validation URLs in `DEFAULT_SETTINGS.billing` in `background.js`.
+- Subscription validation expects a JSON response with `plan`, `status`, `active`, `currentPeriodEnd`, optional `customerPortalUrl`, and optional `entitlements`.
 
 ## Install (Unpacked)
 1. Open `chrome://extensions` in Chrome.

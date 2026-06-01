@@ -1,28 +1,32 @@
 # Monetization Plan
 
 ## Current Reality
-This repository does not currently include:
-- user accounts
-- license checks
-- payment processing
-- a hosted website for onboarding or billing
+This repository now includes extension-side subscription handling:
+- Free plan usage tracking
+- Starter, Pro, and Unlimited plan gating for higher daily limits
+- Upgrade and billing portal buttons
+- License/subscription validation hook for a Stripe-backed service
 
-That means the extension can be listed, but it cannot directly earn revenue yet.
+The extension still needs the live hosted billing service and Stripe configuration before real payments can be processed.
 
 ## Best Revenue Model
 Use a free Chrome Web Store listing plus a paid external service.
 
-Suggested model:
-- Free tier: local profile autofill, logs, manual review before submit
-- Paid tier: advanced profile templates, multi-profile support, exportable application history, premium support, cloud backup, agency/team features
+Current model:
+- Free tier: local profile autofill, logs, manual review before submit, 10 live applications per day
+- Starter monthly: $9.99/month for 100 live applications per day
+- Pro monthly: $22.99/month for 450 live applications per day
+- Unlimited monthly: $35.99/month for unlimited live applications, subject to fair-use protections
+- Future paid features: advanced profile templates, multi-profile support, exportable application history, premium support, cloud backup, agency/team features
 
 ## Minimum Commercial Stack Needed
 - Marketing site
 - privacy policy and terms pages
 - billing provider such as Stripe
-- account system
-- extension sign-in flow
-- feature gating for premium features
+- account or license system
+- hosted subscription validation endpoint
+- webhook processing for Stripe subscription lifecycle
+- configured checkout and customer portal URLs
 
 ## Recommended Positioning
 - Target tech job seekers who actively use Dice

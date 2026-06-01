@@ -1,8 +1,8 @@
 ﻿{
   "manifest_version": 3,
-  "name": "Dice Application Autofill Assistant",
-  "version": "1.0.0",
-  "description": "Autofills supported Dice application flows, saves logs, and lets you review before final submission.",
+  "name": "NDice Indeed",
+  "version": "1.2.1",
+  "description": "NDice Indeed autofills supported Dice application flows, saves logs, and lets you review before final submission.",
   "permissions": [
     "storage",
     "alarms",
@@ -10,7 +10,8 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://*.dice.com/*"
+    "https://*.dice.com/*",
+    "https://ndiceindeed.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -24,7 +25,7 @@
     }
   ],
   "action": {
-    "default_title": "Dice Autofill Assistant",
+    "default_title": "NDice Indeed",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

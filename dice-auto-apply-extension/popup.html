@@ -1,18 +1,42 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dice Autofill Assistant</title>
+  <title>NDice Indeed</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <main class="container">
-    <h1>Dice Autofill Assistant</h1>
+    <h1>NDice Indeed</h1>
+
+    <section class="card planCard">
+      <div class="planHeader">
+        <div>
+          <h2>Subscription</h2>
+          <p id="planText" class="small">Checking plan...</p>
+        </div>
+        <span id="planBadge" class="badge">Free</span>
+      </div>
+      <p class="small">Free includes 10 live applications per day. Starter is $9.99/month for 100/day, Pro is $22.99/month for 450/day, and Unlimited is $35.99/month. Application limits reset daily. Unlimited is subject to fair-use protections.</p>
+      <input id="subscriptionEmail" type="email" placeholder="Billing email" />
+      <input id="licenseKey" type="text" placeholder="License key" />
+      <div class="buttonRow">
+        <button class="planCheckoutBtn" data-plan="starter">Starter</button>
+        <button class="planCheckoutBtn" data-plan="pro">Pro</button>
+      </div>
+      <div class="buttonRow">
+        <button class="planCheckoutBtn" data-plan="unlimited">Unlimited</button>
+        <button id="refreshSubscriptionBtn">Refresh Plan</button>
+      </div>
+      <div class="buttonRow single">
+        <button id="manageBillingBtn" class="secondary">Manage Billing</button>
+      </div>
+    </section>
 
     <section class="card">
-      <h2>Schedule (ET)</h2>
-      <p class="small">Runs daily at <strong>9:00 AM</strong>, <strong>1:00 PM</strong>, and <strong>6:00 PM</strong> Eastern Time.</p>
+      <h2>Schedule (Local Time)</h2>
+      <p class="small">Runs daily at <strong>3 random times</strong> in your local timezone, outside quiet hours of <strong>11:00 PM to 5:00 AM</strong>.</p>
       <label class="row">
         <span>Enable scheduler</span>
         <input id="scheduleEnabled" type="checkbox" />
@@ -25,7 +49,10 @@
       <input id="searchUrl" type="text" />
 
       <label>Max jobs per run</label>
-      <input id="maxJobsPerRun" type="number" min="1" max="100" />
+      <input id="maxJobsPerRun" type="number" min="1" max="450" />
+
+      <label>Max listing pages per run</label>
+      <input id="maxPaginationPages" type="number" min="1" max="25" />
 
       <label>Max form steps per job</label>
       <input id="maxFormSteps" type="number" min="1" max="30" />
@@ -63,6 +90,9 @@
         <button id="clearLogsBtn">Clear logs</button>
         <button id="resumeBtn">Resume Scheduler</button>
       </div>
+      <div class="buttonRow single">
+        <button id="resetSubmittedHistoryBtn" class="warning">Reset Submitted History</button>
+      </div>
     </section>
 
     <p id="feedback" class="small"></p>
@@ -70,4 +100,3 @@
   <script src="popup.js"></script>
 </body>
 </html>
-
