@@ -69,9 +69,9 @@ const DEFAULT_SETTINGS = {
   maxFormSteps: 10,
   dryRun: false,
   billing: {
-    checkoutUrl: "https://ndiceindeed.com/billing/checkout",
-    portalUrl: "https://ndiceindeed.com/billing/portal",
-    validationUrl: "https://ndiceindeed.com/api/subscription/validate"
+    checkoutUrl: "https://ndice-indeed-billing.onrender.com/billing/checkout",
+    portalUrl: "https://ndice-indeed-billing.onrender.com/billing/portal",
+    validationUrl: "https://ndice-indeed-billing.onrender.com/api/subscription/validate"
   },
   subscriptionAuth: {
     email: "",

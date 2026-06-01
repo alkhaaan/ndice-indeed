@@ -1,7 +1,7 @@
 ﻿{
   "manifest_version": 3,
   "name": "NDice Indeed",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "NDice Indeed autofills supported Dice application flows, saves logs, and lets you review before final submission.",
   "permissions": [
     "storage",
@@ -11,7 +11,8 @@
   ],
   "host_permissions": [
     "https://*.dice.com/*",
-    "https://ndiceindeed.com/*"
+    "https://ndiceindeed.com/*",
+    "https://ndice-indeed-billing.onrender.com/*"
   ],
   "background": {
     "service_worker": "background.js",

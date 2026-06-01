@@ -45,7 +45,7 @@ Autofill supported Dice Easy Apply job application flows and log the results for
 - `tabs`: opens Dice job tabs and closes them after processing
 - `scripting`: injects the content script when needed on Dice pages
 - `https://*.dice.com/*`: limits automation access to Dice pages only
-- `https://ndiceindeed.com/*`: opens billing pages and validates subscription status
+- `https://ndice-indeed-billing.onrender.com/*`: opens billing pages and validates subscription status
 
 ## Privacy Disclosure Draft
 This extension stores configuration, logs, job history, billing email, and license key locally in the user's browser storage. It interacts with Dice pages needed to automate supported autofill flows and contacts the NDice Indeed subscription service only for checkout, billing management, and subscription validation. It does not include analytics.
