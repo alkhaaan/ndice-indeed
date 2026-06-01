@@ -27,9 +27,34 @@ h2 {
 .card {
   border: 1px solid #d9e3ec;
   background: #ffffff;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 10px;
   margin-bottom: 10px;
+}
+
+.planCard {
+  border-color: #b9d2e8;
+}
+
+.planHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.badge {
+  border-radius: 999px;
+  background: #e8eff6;
+  color: #204a72;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+}
+
+.badge.pro {
+  background: #e8f6ed;
+  color: #176333;
 }
 
 label {
@@ -62,6 +87,10 @@ input[type="number"] {
   margin-top: 8px;
 }
 
+.buttonRow.single {
+  grid-template-columns: 1fr;
+}
+
 button {
   border: 1px solid #204a72;
   background: #2f6fa8;
@@ -76,6 +105,16 @@ button:hover {
   background: #1f5a8c;
 }
 
+.secondary {
+  border-color: #6f7d8a;
+  background: #eef3f7;
+  color: #12202f;
+}
+
+.secondary:hover {
+  background: #dfe8ef;
+}
+
 .danger {
   border-color: #8f1d1d;
   background: #c83a3a;
@@ -83,6 +122,15 @@ button:hover {
 
 .danger:hover {
   background: #a82d2d;
+}
+
+.warning {
+  border-color: #8a5b0f;
+  background: #b1761b;
+}
+
+.warning:hover {
+  background: #975f0f;
 }
 
 .small {

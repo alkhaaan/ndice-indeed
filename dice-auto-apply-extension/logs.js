@@ -27,13 +27,30 @@ async function render() {
 
   for (const entry of recentFirst) {
     const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${escapeHtml(new Date(entry.timestamp).toLocaleString())}</td>
-      <td>${escapeHtml(entry.level || "")}</td>
-      <td>${escapeHtml(entry.source || "")}</td>
-      <td>${escapeHtml(entry.message || "")}</td>
-      <td><pre>${escapeHtml(JSON.stringify(entry.data || {}, null, 2))}</pre></td>
-    `;
+
+    const timestampTd = document.createElement("td");
+    timestampTd.textContent = new Date(entry.timestamp).toLocaleString();
+
+    const levelTd = document.createElement("td");
+    levelTd.textContent = entry.level || "";
+
+    const sourceTd = document.createElement("td");
+    sourceTd.textContent = entry.source || "";
+
+    const messageTd = document.createElement("td");
+    messageTd.textContent = entry.message || "";
+
+    const dataTd = document.createElement("td");
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(entry.data || {}, null, 2);
+    dataTd.appendChild(pre);
+
+    row.appendChild(timestampTd);
+    row.appendChild(levelTd);
+    row.appendChild(sourceTd);
+    row.appendChild(messageTd);
+    row.appendChild(dataTd);
+
     tableBody.appendChild(row);
   }
 }
@@ -73,14 +90,5 @@ function sendMessage(payload) {
       resolve(response);
     });
   });
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
